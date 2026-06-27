@@ -46,34 +46,53 @@ run() {
 }
 
 # ------------------------------------------------------------------
-# 1. Verify Hermes is installed
+# 1. Verify Hermes is installed and detect its layout
 # ------------------------------------------------------------------
-if [ ! -d "$HERMES_HOME/hermes-agent" ]; then
-  echo "ERROR: Hermes Agent not found at $HERMES_HOME/hermes-agent"
+# Two supported layouts:
+#   host      — installer-style tree at $HERMES_HOME/hermes-agent (plugins live
+#               under .../plugins/memory/<name>).
+#   container — official hermes-agent image: read-only agent at /opt/hermes with
+#               the `hermes` CLI on PATH and writable plugins at $HERMES_HOME/plugins/<name>.
+if [ -d "$HERMES_HOME/hermes-agent" ]; then
+  HERMES_LAYOUT="host"
+  PLUGIN_DIR="$HERMES_HOME/hermes-agent/plugins/memory/ferrosa"
+elif command -v hermes >/dev/null 2>&1; then
+  HERMES_LAYOUT="container"
+  PLUGIN_DIR="$HERMES_HOME/plugins/ferrosa"
+else
+  echo "ERROR: Hermes Agent not found."
+  echo "  - host install expected at: $HERMES_HOME/hermes-agent"
+  echo "  - or the 'hermes' CLI on PATH (container/image install)"
   echo "Install Hermes first: https://hermes-agent.nousresearch.com/docs"
   exit 1
 fi
+echo "Detected Hermes layout: $HERMES_LAYOUT (plugin dir: $PLUGIN_DIR)"
 
 # ------------------------------------------------------------------
 # 2. Install memory provider plugin
 # ------------------------------------------------------------------
 if ! $SKIP_PLUGIN; then
   echo "=== Installing ferrosa memory provider plugin ==="
-  PLUGIN_DIR="$HERMES_HOME/hermes-agent/plugins/memory/ferrosa"
   run mkdir -p "$PLUGIN_DIR"
   run cp "$SCRIPT_DIR/plugin/__init__.py" "$PLUGIN_DIR/__init__.py"
   run cp "$SCRIPT_DIR/plugin/plugin.yaml" "$PLUGIN_DIR/plugin.yaml"
   run cp "$SCRIPT_DIR/plugin/README.md" "$PLUGIN_DIR/README.md"
 
-  # Activate the provider
+  # Activate the provider. Non-fatal: on some installs `hermes config set` may
+  # fail (e.g. the home dir is provisioned by a separate boot step) — the plugin
+  # is still usable when the provider is selected via config.yaml or env, so we
+  # warn rather than abort the whole install.
   echo ""
   echo "=== Activating ferrosa as memory provider ==="
-  run hermes config set memory.provider ferrosa
+  if ! run hermes config set memory.provider ferrosa; then
+    echo "[WARN] 'hermes config set memory.provider ferrosa' failed."
+    echo "       Ensure memory.provider: ferrosa is set in your Hermes config.yaml."
+  fi
 
   # Save MCP URL to plugin config
   run mkdir -p "$HERMES_HOME/plugins/ferrosa"
   echo "{\"url\": \"$MCP_URL\"}" > "$HERMES_HOME/plugins/ferrosa/config.json"
-  echo "[OK] Plugin installed and activated"
+  echo "[OK] Plugin installed (provider: ferrosa)"
 fi
 
 # ------------------------------------------------------------------
