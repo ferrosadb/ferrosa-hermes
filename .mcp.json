@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ferrosa-memory": {
+      "type": "http",
+      "url": "http://ferrosa_user:ferrosa_user@127.0.0.1:18765/mcp"
+    }
+  }
+}

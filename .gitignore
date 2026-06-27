@@ -3,3 +3,8 @@ __pycache__/
 *.egg-info/
 .env
 .runtime/
+
+# Skills under .claude/skills, .opencode/skills, .agents/skills are VENDORED
+# (copied from the research repo by /warp) and committed so public cloners get
+# them without the research repo. Re-run /warp to refresh. Do NOT gitignore them.
+.claude/settings.local.json

@@ -57,11 +57,15 @@ def validate_auth_header(value: str) -> str:
             "captured the commented placeholder too; pass only the real header value"
         )
     if "<base64" in cleaned or cleaned == AUTH_HEADER_PLACEHOLDER:
-        raise ValueError("auth header is the documentation placeholder, not a real credential")
+        raise ValueError(
+            "auth header is the documentation placeholder, not a real credential"
+        )
     return cleaned
 
 
-def has_usable_auth(auth_header: str | None, mcp_user: str | None, mcp_password: str | None) -> bool:
+def has_usable_auth(
+    auth_header: str | None, mcp_user: str | None, mcp_password: str | None
+) -> bool:
     """True when the configured env can authenticate: a non-empty header, or a full
     user+password pair (a lone user or lone password cannot build a Basic header)."""
     if auth_header and auth_header.strip():
@@ -80,7 +84,9 @@ def auth_consistency_error(
     The failure we guard against: the MCP endpoint requires auth (401 unauthenticated)
     but the hook env has no usable credentials, which installs hooks that silently 401.
     """
-    if server_requires_auth and not has_usable_auth(auth_header, mcp_user, mcp_password):
+    if server_requires_auth and not has_usable_auth(
+        auth_header, mcp_user, mcp_password
+    ):
         return (
             "MCP endpoint requires auth (responds 401 unauthenticated) but no usable "
             "credentials are configured. Pass --auth-header, or --mcp-user with "
@@ -142,11 +148,19 @@ def write_executable(path: Path, text: str) -> None:
     path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def ensure_env_line(lines: list[str], key: str, line: str, replace: bool = False, replace_if_contains: str | None = None) -> None:
+def ensure_env_line(
+    lines: list[str],
+    key: str,
+    line: str,
+    replace: bool = False,
+    replace_if_contains: str | None = None,
+) -> None:
     prefix = f"export {key}="
     for index, existing in enumerate(lines):
         if existing.startswith(prefix):
-            if replace or (replace_if_contains is not None and replace_if_contains in existing):
+            if replace or (
+                replace_if_contains is not None and replace_if_contains in existing
+            ):
                 lines[index] = line
             return
     lines.append(line)
@@ -173,36 +187,99 @@ def write_hook_env(
             "# Set FERROSA_MEMORY_AUTH_HEADER to your full Authorization header value if the endpoint requires it.",
             "# Set FERROSA_MEMORY_HOOK_EMBED_MISSING=true after configuring an embedding provider.",
         ]
-    ensure_env_line(lines, "FERROSA_MEMORY_MCP_URL", f"export FERROSA_MEMORY_MCP_URL={shell_quote(mcp_url)}", replace=True)
+    ensure_env_line(
+        lines,
+        "FERROSA_MEMORY_MCP_URL",
+        f"export FERROSA_MEMORY_MCP_URL={shell_quote(mcp_url)}",
+        replace=True,
+    )
     if auth_header is not None:
-        ensure_env_line(lines, "FERROSA_MEMORY_AUTH_HEADER", f"export FERROSA_MEMORY_AUTH_HEADER={shell_quote(auth_header)}", replace=True)
+        ensure_env_line(
+            lines,
+            "FERROSA_MEMORY_AUTH_HEADER",
+            f"export FERROSA_MEMORY_AUTH_HEADER={shell_quote(auth_header)}",
+            replace=True,
+        )
     if mcp_user is not None:
-        ensure_env_line(lines, "FERROSA_MEMORY_MCP_USER", f"export FERROSA_MEMORY_MCP_USER={shell_quote(mcp_user)}", replace=True)
+        ensure_env_line(
+            lines,
+            "FERROSA_MEMORY_MCP_USER",
+            f"export FERROSA_MEMORY_MCP_USER={shell_quote(mcp_user)}",
+            replace=True,
+        )
     if mcp_password is not None:
-        ensure_env_line(lines, "FERROSA_MEMORY_MCP_PASSWORD", f"export FERROSA_MEMORY_MCP_PASSWORD={shell_quote(mcp_password)}", replace=True)
+        ensure_env_line(
+            lines,
+            "FERROSA_MEMORY_MCP_PASSWORD",
+            f"export FERROSA_MEMORY_MCP_PASSWORD={shell_quote(mcp_password)}",
+            replace=True,
+        )
     if tenant_id is not None:
         # The server derives a request's tenant from the authenticated
         # principal and rejects a mismatched client tenant; the hook must send
         # THIS install's tenant (from `ferrosa-memory provision-tenant`), not a
         # shared default, or ingests are silently dropped.
-        ensure_env_line(lines, "FERROSA_MEMORY_TENANT_ID", f"export FERROSA_MEMORY_TENANT_ID={shell_quote(tenant_id)}", replace=True)
+        ensure_env_line(
+            lines,
+            "FERROSA_MEMORY_TENANT_ID",
+            f"export FERROSA_MEMORY_TENANT_ID={shell_quote(tenant_id)}",
+            replace=True,
+        )
     ensure_env_line(
         lines,
         "FERROSA_MEMORY_HOOK_TIMEOUT",
         "export FERROSA_MEMORY_HOOK_TIMEOUT=${FERROSA_MEMORY_HOOK_TIMEOUT:-8}",
         replace_if_contains=":-2.5",
     )
-    ensure_env_line(lines, "FERROSA_MEMORY_HOOK_SEARCH_LIMIT", "export FERROSA_MEMORY_HOOK_SEARCH_LIMIT=${FERROSA_MEMORY_HOOK_SEARCH_LIMIT:-5}")
-    ensure_env_line(lines, "FERROSA_MEMORY_HOOK_MIN_SCORE", "export FERROSA_MEMORY_HOOK_MIN_SCORE=${FERROSA_MEMORY_HOOK_MIN_SCORE:-0.0}")
-    ensure_env_line(lines, "FERROSA_MEMORY_HOOK_MIN_JUDGE_SCORE", "export FERROSA_MEMORY_HOOK_MIN_JUDGE_SCORE=${FERROSA_MEMORY_HOOK_MIN_JUDGE_SCORE:-1.0}")
-    ensure_env_line(lines, "FERROSA_MEMORY_HOOK_REQUIRE_JUDGMENT", "export FERROSA_MEMORY_HOOK_REQUIRE_JUDGMENT=${FERROSA_MEMORY_HOOK_REQUIRE_JUDGMENT:-true}")
-    ensure_env_line(lines, "FERROSA_MEMORY_HOOK_INCLUDE_HINTS", "export FERROSA_MEMORY_HOOK_INCLUDE_HINTS=${FERROSA_MEMORY_HOOK_INCLUDE_HINTS:-false}")
-    ensure_env_line(lines, "FERROSA_MEMORY_HOOK_MIN_QUERY_TERMS", "export FERROSA_MEMORY_HOOK_MIN_QUERY_TERMS=${FERROSA_MEMORY_HOOK_MIN_QUERY_TERMS:-2}")
-    ensure_env_line(lines, "FERROSA_MEMORY_HOOK_ALLOWED_KINDS", "export FERROSA_MEMORY_HOOK_ALLOWED_KINDS=${FERROSA_MEMORY_HOOK_ALLOWED_KINDS:-episodic,procedural,semantic}")
-    ensure_env_line(lines, "FERROSA_MEMORY_HOOK_CAPTURE_SEGMENTS", "export FERROSA_MEMORY_HOOK_CAPTURE_SEGMENTS=${FERROSA_MEMORY_HOOK_CAPTURE_SEGMENTS:-true}")
-    ensure_env_line(lines, "FERROSA_MEMORY_HOOK_EMBED_MISSING", "export FERROSA_MEMORY_HOOK_EMBED_MISSING=${FERROSA_MEMORY_HOOK_EMBED_MISSING:-false}")
+    ensure_env_line(
+        lines,
+        "FERROSA_MEMORY_HOOK_SEARCH_LIMIT",
+        "export FERROSA_MEMORY_HOOK_SEARCH_LIMIT=${FERROSA_MEMORY_HOOK_SEARCH_LIMIT:-5}",
+    )
+    ensure_env_line(
+        lines,
+        "FERROSA_MEMORY_HOOK_MIN_SCORE",
+        "export FERROSA_MEMORY_HOOK_MIN_SCORE=${FERROSA_MEMORY_HOOK_MIN_SCORE:-0.0}",
+    )
+    ensure_env_line(
+        lines,
+        "FERROSA_MEMORY_HOOK_MIN_JUDGE_SCORE",
+        "export FERROSA_MEMORY_HOOK_MIN_JUDGE_SCORE=${FERROSA_MEMORY_HOOK_MIN_JUDGE_SCORE:-1.0}",
+    )
+    ensure_env_line(
+        lines,
+        "FERROSA_MEMORY_HOOK_REQUIRE_JUDGMENT",
+        "export FERROSA_MEMORY_HOOK_REQUIRE_JUDGMENT=${FERROSA_MEMORY_HOOK_REQUIRE_JUDGMENT:-true}",
+    )
+    ensure_env_line(
+        lines,
+        "FERROSA_MEMORY_HOOK_INCLUDE_HINTS",
+        "export FERROSA_MEMORY_HOOK_INCLUDE_HINTS=${FERROSA_MEMORY_HOOK_INCLUDE_HINTS:-false}",
+    )
+    ensure_env_line(
+        lines,
+        "FERROSA_MEMORY_HOOK_MIN_QUERY_TERMS",
+        "export FERROSA_MEMORY_HOOK_MIN_QUERY_TERMS=${FERROSA_MEMORY_HOOK_MIN_QUERY_TERMS:-2}",
+    )
+    ensure_env_line(
+        lines,
+        "FERROSA_MEMORY_HOOK_ALLOWED_KINDS",
+        "export FERROSA_MEMORY_HOOK_ALLOWED_KINDS=${FERROSA_MEMORY_HOOK_ALLOWED_KINDS:-episodic,procedural,semantic}",
+    )
+    ensure_env_line(
+        lines,
+        "FERROSA_MEMORY_HOOK_CAPTURE_SEGMENTS",
+        "export FERROSA_MEMORY_HOOK_CAPTURE_SEGMENTS=${FERROSA_MEMORY_HOOK_CAPTURE_SEGMENTS:-true}",
+    )
+    ensure_env_line(
+        lines,
+        "FERROSA_MEMORY_HOOK_EMBED_MISSING",
+        "export FERROSA_MEMORY_HOOK_EMBED_MISSING=${FERROSA_MEMORY_HOOK_EMBED_MISSING:-false}",
+    )
     if not any("FERROSA_MEMORY_HOOK_EMBED_MISSING=true" in line for line in lines):
-        lines.append("# Set FERROSA_MEMORY_HOOK_EMBED_MISSING=true after configuring an embedding provider.")
+        lines.append(
+            "# Set FERROSA_MEMORY_HOOK_EMBED_MISSING=true after configuring an embedding provider."
+        )
     env_path.write_text("\n".join(lines).rstrip() + "\n")
     env_path.chmod(0o600)
 
@@ -231,7 +308,14 @@ def create_wrappers(
 ) -> dict[str, dict[str, str]]:
     install_dir.mkdir(parents=True, exist_ok=True)
     env_path = install_dir / "env"
-    write_hook_env(env_path, mcp_url, auth_header=auth_header, mcp_user=mcp_user, mcp_password=mcp_password, tenant_id=tenant_id)
+    write_hook_env(
+        env_path,
+        mcp_url,
+        auth_header=auth_header,
+        mcp_user=mcp_user,
+        mcp_password=mcp_password,
+        tenant_id=tenant_id,
+    )
 
     wrappers: dict[str, dict[str, str]] = {}
     for harness in harnesses:
@@ -244,7 +328,7 @@ def create_wrappers(
                 "#!/usr/bin/env bash",
                 "set -euo pipefail",
                 f"ENV_FILE={shell_quote(str(env_path))}",
-                "[ -f \"$ENV_FILE\" ] && . \"$ENV_FILE\"",
+                '[ -f "$ENV_FILE" ] && . "$ENV_FILE"',
                 f"HOOK={shell_quote(str(hook_path))}",
                 "",
             ]
@@ -252,20 +336,20 @@ def create_wrappers(
         write_executable(
             start,
             common
-            + "exec python3 \"$HOOK\" "
-            + f"--harness {harness} --format {fmt} --mode session-start --event session-start \"$@\"\n",
+            + 'exec python3 "$HOOK" '
+            + f'--harness {harness} --format {fmt} --mode session-start --event session-start "$@"\n',
         )
         write_executable(
             recall,
             common
-            + "exec python3 \"$HOOK\" "
-            + f"--harness {harness} --format {fmt} --mode recall --event pre-turn \"$@\"\n",
+            + 'exec python3 "$HOOK" '
+            + f'--harness {harness} --format {fmt} --mode recall --event pre-turn "$@"\n',
         )
         write_executable(
             ingest,
             common
-            + "exec python3 \"$HOOK\" "
-            + f"--harness {harness} --format plain --mode ingest-turn --event turn-end \"$@\"\n",
+            + 'exec python3 "$HOOK" '
+            + f'--harness {harness} --format plain --mode ingest-turn --event turn-end "$@"\n',
         )
         wrappers[harness] = {
             "session_start": str(start),
@@ -285,7 +369,9 @@ def backup(path: Path) -> Path:
 DEFAULT_HOOK_TIMEOUT_SECONDS = 10
 
 
-def hook_entry(command: str, timeout: int = DEFAULT_HOOK_TIMEOUT_SECONDS) -> dict[str, object]:
+def hook_entry(
+    command: str, timeout: int = DEFAULT_HOOK_TIMEOUT_SECONDS
+) -> dict[str, object]:
     return {"type": "command", "command": command, "timeout": timeout}
 
 
@@ -294,10 +380,17 @@ def codex_hook_entry(
     status_message: str,
     timeout: int = DEFAULT_HOOK_TIMEOUT_SECONDS,
 ) -> dict[str, object]:
-    return {"type": "command", "command": command, "timeout": timeout, "statusMessage": status_message}
+    return {
+        "type": "command",
+        "command": command,
+        "timeout": timeout,
+        "statusMessage": status_message,
+    }
 
 
-def ensure_hook(settings: dict[str, object], event: str, command: str, matcher: str | None = None) -> bool:
+def ensure_hook(
+    settings: dict[str, object], event: str, command: str, matcher: str | None = None
+) -> bool:
     hooks = settings.setdefault("hooks", {})
     if not isinstance(hooks, dict):
         raise ValueError("settings.hooks exists but is not an object")
@@ -401,13 +494,17 @@ def patch_codex(hooks_path: Path, wrappers: dict[str, str], dry_run: bool) -> st
         settings,
         "SubagentStop",
         wrappers["ingest_turn"],
-        codex_hook_entry(wrappers["ingest_turn"], "Saving Ferrosa Memory subagent turn"),
+        codex_hook_entry(
+            wrappers["ingest_turn"], "Saving Ferrosa Memory subagent turn"
+        ),
     )
     changed |= ensure_hook_with_entry(
         settings,
         "PreCompact",
         wrappers["ingest_turn"],
-        codex_hook_entry(wrappers["ingest_turn"], "Saving Ferrosa Memory context before compaction"),
+        codex_hook_entry(
+            wrappers["ingest_turn"], "Saving Ferrosa Memory context before compaction"
+        ),
     )
     if not changed:
         return f"Codex hooks already include Ferrosa Memory hooks: {hooks_path}"
@@ -466,11 +563,21 @@ def write_snippets(install_dir: Path, wrappers: dict[str, dict[str, str]]) -> No
             json.dumps(
                 {
                     "hooks": {
-                        "SessionStart": [{"hooks": [hook_entry(wrappers["claude"]["session_start"])]}],
-                        "UserPromptSubmit": [{"hooks": [hook_entry(wrappers["claude"]["recall"])]}],
-                        "Stop": [{"hooks": [hook_entry(wrappers["claude"]["ingest_turn"])]}],
-                        "SubagentStop": [{"hooks": [hook_entry(wrappers["claude"]["ingest_turn"])]}],
-                        "PreCompact": [{"hooks": [hook_entry(wrappers["claude"]["ingest_turn"])]}],
+                        "SessionStart": [
+                            {"hooks": [hook_entry(wrappers["claude"]["session_start"])]}
+                        ],
+                        "UserPromptSubmit": [
+                            {"hooks": [hook_entry(wrappers["claude"]["recall"])]}
+                        ],
+                        "Stop": [
+                            {"hooks": [hook_entry(wrappers["claude"]["ingest_turn"])]}
+                        ],
+                        "SubagentStop": [
+                            {"hooks": [hook_entry(wrappers["claude"]["ingest_turn"])]}
+                        ],
+                        "PreCompact": [
+                            {"hooks": [hook_entry(wrappers["claude"]["ingest_turn"])]}
+                        ],
                     }
                 },
                 indent=2,
@@ -478,7 +585,9 @@ def write_snippets(install_dir: Path, wrappers: dict[str, dict[str, str]]) -> No
             + "\n"
         )
     if "hermes" in wrappers:
-        (install_dir / "hermes-hooks-snippet.yaml").write_text(hermes_block(wrappers["hermes"]))
+        (install_dir / "hermes-hooks-snippet.yaml").write_text(
+            hermes_block(wrappers["hermes"])
+        )
     if "codex" in wrappers:
         (install_dir / "codex-hooks-snippet.json").write_text(
             json.dumps(
@@ -547,9 +656,13 @@ def verification_command(command: str) -> list[str]:
         first_line = Path(command).read_text(errors="ignore").splitlines()[0]
     except (IndexError, OSError):
         return [command]
-    if first_line.startswith("#!/usr/bin/env bash") or first_line.startswith("#!/bin/bash"):
+    if first_line.startswith("#!/usr/bin/env bash") or first_line.startswith(
+        "#!/bin/bash"
+    ):
         return ["bash", command]
-    if first_line.startswith("#!/usr/bin/env python3") or first_line.startswith("#!/usr/bin/python3"):
+    if first_line.startswith("#!/usr/bin/env python3") or first_line.startswith(
+        "#!/usr/bin/python3"
+    ):
         return ["python3", command]
     return [command]
 
@@ -660,9 +773,9 @@ export default function (pi: ExtensionAPI) {
 
 
 def render_pi_extension(recall_wrapper: str, ingest_wrapper: str) -> str:
-    return PI_EXTENSION_TEMPLATE.replace("__RECALL_WRAPPER__", json.dumps(recall_wrapper)).replace(
-        "__INGEST_WRAPPER__", json.dumps(ingest_wrapper)
-    )
+    return PI_EXTENSION_TEMPLATE.replace(
+        "__RECALL_WRAPPER__", json.dumps(recall_wrapper)
+    ).replace("__INGEST_WRAPPER__", json.dumps(ingest_wrapper))
 
 
 def install_pi_extension(
@@ -714,7 +827,9 @@ def verify_wrapper(command: str, mode: str) -> str:
         return f"{command}: exited {proc.returncode}: {proc.stderr.strip()[:300]}"
     combined = f"{proc.stdout}\n{proc.stderr}"
     if "skipped:" in combined:
-        skip_line = next((line for line in combined.splitlines() if "skipped:" in line), "skipped")
+        skip_line = next(
+            (line for line in combined.splitlines() if "skipped:" in line), "skipped"
+        )
         return f"{command}: FAILED (hook degraded to skip): {skip_line.strip()[:300]}"
     return f"{command}: ok"
 
@@ -727,23 +842,35 @@ def main() -> int:
         default="auto",
     )
     parser.add_argument("--install-dir", type=Path, default=DEFAULT_INSTALL_DIR)
-    parser.add_argument("--mcp-url", default=os.environ.get("FERROSA_MEMORY_MCP_URL", DEFAULT_MCP_URL))
+    parser.add_argument(
+        "--mcp-url", default=os.environ.get("FERROSA_MEMORY_MCP_URL", DEFAULT_MCP_URL)
+    )
     parser.add_argument(
         "--auth-header",
         default=os.environ.get("FERROSA_MEMORY_AUTH_HEADER"),
         help="Full Authorization header value (e.g. 'Basic <base64>') written to the hook env file.",
     )
     parser.add_argument("--mcp-user", default=os.environ.get("FERROSA_MEMORY_MCP_USER"))
-    parser.add_argument("--mcp-password", default=os.environ.get("FERROSA_MEMORY_MCP_PASSWORD"))
+    parser.add_argument(
+        "--mcp-password", default=os.environ.get("FERROSA_MEMORY_MCP_PASSWORD")
+    )
     parser.add_argument(
         "--tenant-id",
         default=os.environ.get("FERROSA_MEMORY_TENANT_ID"),
         help="Per-install tenant UUID (from `ferrosa-memory provision-tenant`) written to the hook env "
         "as FERROSA_MEMORY_TENANT_ID. Must match the authenticated principal's tenant or ingests are dropped.",
     )
-    parser.add_argument("--claude-settings", type=Path, default=Path.home() / ".claude" / "settings.json")
-    parser.add_argument("--hermes-config", type=Path, default=Path.home() / ".hermes" / "config.yaml")
-    parser.add_argument("--codex-hooks", type=Path, default=Path.home() / ".codex" / "hooks.json")
+    parser.add_argument(
+        "--claude-settings",
+        type=Path,
+        default=Path.home() / ".claude" / "settings.json",
+    )
+    parser.add_argument(
+        "--hermes-config", type=Path, default=Path.home() / ".hermes" / "config.yaml"
+    )
+    parser.add_argument(
+        "--codex-hooks", type=Path, default=Path.home() / ".codex" / "hooks.json"
+    )
     parser.add_argument("--no-apply-config", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--verify", action="store_true")
@@ -773,13 +900,23 @@ def main() -> int:
                 f"WARNING: could not reach {args.mcp_url} to probe its auth requirement; "
                 "skipping consistency check (pass --skip-auth-check to silence)"
             )
-        elif (err := auth_consistency_error(required, args.auth_header, args.mcp_user, args.mcp_password)):
+        elif err := auth_consistency_error(
+            required, args.auth_header, args.mcp_user, args.mcp_password
+        ):
             log(f"auth consistency check FAILED: {err}")
-            log("Refusing to install inconsistent hooks. Re-run with --skip-auth-check to override.")
+            log(
+                "Refusing to install inconsistent hooks. Re-run with --skip-auth-check to override."
+            )
             return 3
         else:
-            configured = "yes" if has_usable_auth(args.auth_header, args.mcp_user, args.mcp_password) else "no"
-            log(f"auth consistency OK: server_requires_auth={required}, credentials_configured={configured}")
+            configured = (
+                "yes"
+                if has_usable_auth(args.auth_header, args.mcp_user, args.mcp_password)
+                else "no"
+            )
+            log(
+                f"auth consistency OK: server_requires_auth={required}, credentials_configured={configured}"
+            )
 
     harnesses = selected_harnesses(args.harness)
     log(f"harnesses: {', '.join(harnesses)}")
@@ -798,15 +935,29 @@ def main() -> int:
     results: list[str] = []
     if not args.no_apply_config:
         if "claude" in wrappers:
-            results.append(patch_claude(args.claude_settings.expanduser(), wrappers["claude"], args.dry_run))
+            results.append(
+                patch_claude(
+                    args.claude_settings.expanduser(), wrappers["claude"], args.dry_run
+                )
+            )
         if "codex" in wrappers:
-            results.append(patch_codex(args.codex_hooks.expanduser(), wrappers["codex"], args.dry_run))
+            results.append(
+                patch_codex(
+                    args.codex_hooks.expanduser(), wrappers["codex"], args.dry_run
+                )
+            )
         if "hermes" in wrappers:
-            results.append(patch_hermes(args.hermes_config.expanduser(), wrappers["hermes"], args.dry_run))
+            results.append(
+                patch_hermes(
+                    args.hermes_config.expanduser(), wrappers["hermes"], args.dry_run
+                )
+            )
         if "pi" in wrappers:
             results.append(install_pi_extension(wrappers["pi"], args.dry_run))
     else:
-        results.append("Skipped harness config patching because --no-apply-config was set.")
+        results.append(
+            "Skipped harness config patching because --no-apply-config was set."
+        )
 
     manifest = {
         "install_dir": str(args.install_dir),
@@ -823,9 +974,15 @@ def main() -> int:
         log(result)
     if args.verify:
         for harness, commands in wrappers.items():
-            log(f"{harness} session-start verification: {verify_wrapper(commands['session_start'], 'session-start')}")
-            log(f"{harness} recall verification: {verify_wrapper(commands['recall'], 'recall')}")
-            log(f"{harness} ingest verification: {verify_wrapper(commands['ingest_turn'], 'ingest-turn')}")
+            log(
+                f"{harness} session-start verification: {verify_wrapper(commands['session_start'], 'session-start')}"
+            )
+            log(
+                f"{harness} recall verification: {verify_wrapper(commands['recall'], 'recall')}"
+            )
+            log(
+                f"{harness} ingest verification: {verify_wrapper(commands['ingest_turn'], 'ingest-turn')}"
+            )
     log(f"wrote manifest: {manifest_path}")
     return 0
 

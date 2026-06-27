@@ -29,6 +29,7 @@ from agent.memory_provider import MemoryProvider
 # v0.17.0) that lack `agent.skill_providers`; the skill catalog simply stays off.
 try:
     from agent.skill_providers import SkillMetadata, SkillPayload
+
     _HAS_SKILL_PROVIDERS = True
 except Exception:  # pragma: no cover - depends on host Hermes version
     SkillMetadata = SkillPayload = None  # type: ignore[assignment]
@@ -39,6 +40,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Simple JSON-RPC MCP client (raw HTTP, no SDK)
 # ---------------------------------------------------------------------------
+
 
 class _McpClient:
     def __init__(self, url: str):
@@ -61,12 +63,16 @@ class _McpClient:
             return url, headers
         username = urllib.parse.unquote(parts.username)
         password = urllib.parse.unquote(parts.password or "")
-        token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+        token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode(
+            "ascii"
+        )
         headers["Authorization"] = f"Basic {token}"
         host = parts.hostname or ""
         if parts.port:
             host = f"{host}:{parts.port}"
-        sanitized = urllib.parse.urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+        sanitized = urllib.parse.urlunsplit(
+            (parts.scheme, host, parts.path, parts.query, parts.fragment)
+        )
         return sanitized, headers
 
     def call(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
@@ -118,6 +124,7 @@ class _McpClient:
 # ---------------------------------------------------------------------------
 # Config helpers
 # ---------------------------------------------------------------------------
+
 
 def _load_saved_config(hermes_home: str) -> Dict[str, Any]:
     cfg_path = Path(hermes_home) / "plugins" / "ferrosa" / "config.json"
@@ -174,7 +181,11 @@ def _format_skill_payload_content(data: Dict[str, Any]) -> str:
     category = str(data.get("category") or "fmem").strip()
     version = str(data.get("version") or "").strip()
     steps = data.get("steps") if isinstance(data.get("steps"), list) else []
-    output_artifacts = data.get("output_artifacts") if isinstance(data.get("output_artifacts"), list) else []
+    output_artifacts = (
+        data.get("output_artifacts")
+        if isinstance(data.get("output_artifacts"), list)
+        else []
+    )
     completion = str(data.get("completion_criteria") or "").strip()
     first_step = str(data.get("first_step_prompt") or "").strip()
 
@@ -233,7 +244,9 @@ class FerrosaSkillProvider:
         if self._metadata_cache is not None:
             return list(self._metadata_cache)
         by_name: Dict[str, SkillMetadata] = {}
-        contexts = _csv_env("FERROSA_MEMORY_SKILL_LIST_CONTEXTS", _DEFAULT_SKILL_LIST_CONTEXTS)
+        contexts = _csv_env(
+            "FERROSA_MEMORY_SKILL_LIST_CONTEXTS", _DEFAULT_SKILL_LIST_CONTEXTS
+        )
         limit = int(os.environ.get("FERROSA_MEMORY_SKILL_LIST_LIMIT", "200") or "200")
         for context in contexts:
             try:
@@ -273,7 +286,12 @@ class FerrosaSkillProvider:
             content=_format_skill_payload_content(result),
             linked_files=None,
             tags=[category] if category else [],
-            metadata={"fmem": {"entity_id": result.get("entity_id"), "version": result.get("version")}},
+            metadata={
+                "fmem": {
+                    "entity_id": result.get("entity_id"),
+                    "version": result.get("version"),
+                }
+            },
         )
 
     def read_supporting_file(self, name: str, file_path: str) -> None:
@@ -283,6 +301,7 @@ class FerrosaSkillProvider:
 # ---------------------------------------------------------------------------
 # MemoryProvider implementation
 # ---------------------------------------------------------------------------
+
 
 class FerrosaMemoryProvider(MemoryProvider):
     def __init__(self):
@@ -340,7 +359,10 @@ class FerrosaMemoryProvider(MemoryProvider):
             self._tenant_id = tenant
         else:
             self._tenant_id = self._saved_config.get("tenant_id", "")
-        logger.info("ferrosa-memory: connected to %s", self._url.rsplit("@", 1)[-1] if "@" in self._url else self._url)
+        logger.info(
+            "ferrosa-memory: connected to %s",
+            self._url.rsplit("@", 1)[-1] if "@" in self._url else self._url,
+        )
 
     def system_prompt_block(self) -> str:
         if not self._client:
@@ -360,10 +382,13 @@ class FerrosaMemoryProvider(MemoryProvider):
             return ""
         try:
             # Use hybrid_search for broad recall
-            result = self._client.call("hybrid_search", {
-                "query": query,
-                "limit": 5,
-            })
+            result = self._client.call(
+                "hybrid_search",
+                {
+                    "query": query,
+                    "limit": 5,
+                },
+            )
             results = result.get("results", []) if isinstance(result, dict) else []
             if not results:
                 return ""
@@ -378,25 +403,33 @@ class FerrosaMemoryProvider(MemoryProvider):
             logger.debug("ferrosa prefetch failed: %s", e)
             return ""
 
-    def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
+    def sync_turn(
+        self, user_content: str, assistant_content: str, *, session_id: str = ""
+    ) -> None:
         if not self._client:
             return
         try:
-            self._client.call("smart_ingest", {
-                "content": f"User turn in session {session_id or self._session_id}: {user_content[:800]}",
-                "entity_type": "conversation_turn",
-                "entity_name": f"user-{session_id or self._session_id}",
-                "session_id": session_id or self._session_id,
-            })
+            self._client.call(
+                "smart_ingest",
+                {
+                    "content": f"User turn in session {session_id or self._session_id}: {user_content[:800]}",
+                    "entity_type": "conversation_turn",
+                    "entity_name": f"user-{session_id or self._session_id}",
+                    "session_id": session_id or self._session_id,
+                },
+            )
         except Exception as e:
             logger.debug("ferrosa sync_turn user failed: %s", e)
         try:
-            self._client.call("smart_ingest", {
-                "content": f"Assistant turn in session {session_id or self._session_id}: {assistant_content[:800]}",
-                "entity_type": "conversation_turn",
-                "entity_name": f"assistant-{session_id or self._session_id}",
-                "session_id": session_id or self._session_id,
-            })
+            self._client.call(
+                "smart_ingest",
+                {
+                    "content": f"Assistant turn in session {session_id or self._session_id}: {assistant_content[:800]}",
+                    "entity_type": "conversation_turn",
+                    "entity_name": f"assistant-{session_id or self._session_id}",
+                    "session_id": session_id or self._session_id,
+                },
+            )
         except Exception as e:
             logger.debug("ferrosa sync_turn assistant failed: %s", e)
 
@@ -407,7 +440,11 @@ class FerrosaMemoryProvider(MemoryProvider):
         return []
 
     def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs) -> str:
-        return json.dumps({"error": "ferrosa memory provider has no provider-local tools; use the fmem MCP tools directly."})
+        return json.dumps(
+            {
+                "error": "ferrosa memory provider has no provider-local tools; use the fmem MCP tools directly."
+            }
+        )
 
     def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
         if not self._client:
@@ -418,15 +455,24 @@ class FerrosaMemoryProvider(MemoryProvider):
         except Exception as e:
             logger.debug("ferrosa consolidation failed: %s", e)
 
-    def on_memory_write(self, action: str, target: str, content: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+    def on_memory_write(
+        self,
+        action: str,
+        target: str,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
         if not self._client or action != "add" or not content:
             return
         try:
-            self._client.call("smart_ingest", {
-                "content": content,
-                "entity_type": target if target in ("memory", "user") else "memory",
-                "session_id": self._session_id,
-            })
+            self._client.call(
+                "smart_ingest",
+                {
+                    "content": content,
+                    "entity_type": target if target in ("memory", "user") else "memory",
+                    "session_id": self._session_id,
+                },
+            )
         except Exception as e:
             logger.debug("ferrosa on_memory_write mirror failed: %s", e)
 
@@ -437,6 +483,7 @@ class FerrosaMemoryProvider(MemoryProvider):
 # ---------------------------------------------------------------------------
 # Plugin entry point
 # ---------------------------------------------------------------------------
+
 
 def register(ctx) -> None:
     """Register ferrosa memory and virtual fmem skill providers."""
