@@ -23,7 +23,16 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from agent.memory_provider import MemoryProvider
-from agent.skill_providers import SkillMetadata, SkillPayload
+
+# The skills-provider API is only present on newer Hermes builds. Import it
+# optionally so the core memory provider still loads on older versions (e.g.
+# v0.17.0) that lack `agent.skill_providers`; the skill catalog simply stays off.
+try:
+    from agent.skill_providers import SkillMetadata, SkillPayload
+    _HAS_SKILL_PROVIDERS = True
+except Exception:  # pragma: no cover - depends on host Hermes version
+    SkillMetadata = SkillPayload = None  # type: ignore[assignment]
+    _HAS_SKILL_PROVIDERS = False
 
 logger = logging.getLogger(__name__)
 
@@ -432,5 +441,5 @@ class FerrosaMemoryProvider(MemoryProvider):
 def register(ctx) -> None:
     """Register ferrosa memory and virtual fmem skill providers."""
     ctx.register_memory_provider(FerrosaMemoryProvider())
-    if hasattr(ctx, "register_skill_provider"):
+    if _HAS_SKILL_PROVIDERS and hasattr(ctx, "register_skill_provider"):
         ctx.register_skill_provider(FerrosaSkillProvider(), namespace="fmem")
