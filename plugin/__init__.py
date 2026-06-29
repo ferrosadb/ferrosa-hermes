@@ -35,6 +35,30 @@ except Exception:  # pragma: no cover - depends on host Hermes version
     SkillMetadata = SkillPayload = None  # type: ignore[assignment]
     _HAS_SKILL_PROVIDERS = False
 
+import uuid
+
+# Pure session-mapping helpers. Prefer the package-relative import; fall back to
+# loading the sibling module by path for hosts that load this file as a
+# standalone module rather than a package.
+try:
+    from .session import (
+        DEFAULT_SESSION_NS,
+        ferrosa_session_id,
+        resolve_session_namespace,
+    )
+except ImportError:  # pragma: no cover - non-package load path
+    import importlib.util as _ilu
+    from pathlib import Path as _Path
+
+    _sp = _ilu.spec_from_file_location(
+        "ferrosa_session", _Path(__file__).with_name("session.py")
+    )
+    _sm = _ilu.module_from_spec(_sp)
+    _sp.loader.exec_module(_sm)
+    DEFAULT_SESSION_NS = _sm.DEFAULT_SESSION_NS
+    ferrosa_session_id = _sm.ferrosa_session_id
+    resolve_session_namespace = _sm.resolve_session_namespace
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -308,6 +332,8 @@ class FerrosaMemoryProvider(MemoryProvider):
         self._url: Optional[str] = None
         self._client: Optional[_McpClient] = None
         self._session_id: str = ""
+        self._ferrosa_session_id: str = ""
+        self._session_ns: uuid.UUID = DEFAULT_SESSION_NS
         self._tenant_id: str = ""
         self._hermes_home: str = ""
         self._saved_config: Dict[str, Any] = {}
@@ -347,6 +373,10 @@ class FerrosaMemoryProvider(MemoryProvider):
 
     def initialize(self, session_id: str, **kwargs) -> None:
         self._session_id = session_id
+        self._session_ns = resolve_session_namespace()
+        self._ferrosa_session_id = (
+            ferrosa_session_id(session_id, self._session_ns) or ""
+        )
         self._hermes_home = str(kwargs.get("hermes_home", "~/.hermes"))
         self._saved_config = _load_saved_config(self._hermes_home)
         self._url = _resolve_url(self._saved_config)
@@ -363,6 +393,10 @@ class FerrosaMemoryProvider(MemoryProvider):
             "ferrosa-memory: connected to %s",
             self._url.rsplit("@", 1)[-1] if "@" in self._url else self._url,
         )
+
+    def _sid(self, per_call: str = "") -> Optional[str]:
+        """Map a (per-call or initialized) session id to a ferrosa-memory UUID."""
+        return ferrosa_session_id(per_call or self._session_id, self._session_ns)
 
     def system_prompt_block(self) -> str:
         if not self._client:
@@ -381,14 +415,14 @@ class FerrosaMemoryProvider(MemoryProvider):
         if not self._client or not query:
             return ""
         try:
-            # Use hybrid_search for broad recall
-            result = self._client.call(
-                "hybrid_search",
-                {
-                    "query": query,
-                    "limit": 5,
-                },
-            )
+            # Use hybrid_search for broad recall. scope="both" spans the current
+            # session AND tenant-global consolidated/curated memory so recall
+            # stays cross-session even though writes are session-scoped.
+            args: Dict[str, Any] = {"query": query, "limit": 5, "scope": "both"}
+            sid = self._sid(session_id)
+            if sid:
+                args["session_id"] = sid
+            result = self._client.call("hybrid_search", args)
             results = result.get("results", []) if isinstance(result, dict) else []
             if not results:
                 return ""
@@ -408,28 +442,28 @@ class FerrosaMemoryProvider(MemoryProvider):
     ) -> None:
         if not self._client:
             return
+        label = session_id or self._session_id
+        sid = self._sid(session_id)
         try:
-            self._client.call(
-                "smart_ingest",
-                {
-                    "content": f"User turn in session {session_id or self._session_id}: {user_content[:800]}",
-                    "entity_type": "conversation_turn",
-                    "entity_name": f"user-{session_id or self._session_id}",
-                    "session_id": session_id or self._session_id,
-                },
-            )
+            args: Dict[str, Any] = {
+                "content": f"User turn in session {label}: {user_content[:800]}",
+                "entity_type": "conversation_turn",
+                "entity_name": f"user-{label}",
+            }
+            if sid:
+                args["session_id"] = sid
+            self._client.call("smart_ingest", args)
         except Exception as e:
             logger.debug("ferrosa sync_turn user failed: %s", e)
         try:
-            self._client.call(
-                "smart_ingest",
-                {
-                    "content": f"Assistant turn in session {session_id or self._session_id}: {assistant_content[:800]}",
-                    "entity_type": "conversation_turn",
-                    "entity_name": f"assistant-{session_id or self._session_id}",
-                    "session_id": session_id or self._session_id,
-                },
-            )
+            args = {
+                "content": f"Assistant turn in session {label}: {assistant_content[:800]}",
+                "entity_type": "conversation_turn",
+                "entity_name": f"assistant-{label}",
+            }
+            if sid:
+                args["session_id"] = sid
+            self._client.call("smart_ingest", args)
         except Exception as e:
             logger.debug("ferrosa sync_turn assistant failed: %s", e)
 
@@ -450,7 +484,9 @@ class FerrosaMemoryProvider(MemoryProvider):
         if not self._client:
             return
         try:
-            self._client.call("run_consolidation", {})
+            sid = self._sid()
+            args: Dict[str, Any] = {"session_id": sid} if sid else {}
+            self._client.call("run_consolidation", args)
             logger.info("ferrosa-memory: ran session-end consolidation")
         except Exception as e:
             logger.debug("ferrosa consolidation failed: %s", e)
@@ -465,14 +501,14 @@ class FerrosaMemoryProvider(MemoryProvider):
         if not self._client or action != "add" or not content:
             return
         try:
-            self._client.call(
-                "smart_ingest",
-                {
-                    "content": content,
-                    "entity_type": target if target in ("memory", "user") else "memory",
-                    "session_id": self._session_id,
-                },
-            )
+            args: Dict[str, Any] = {
+                "content": content,
+                "entity_type": target if target in ("memory", "user") else "memory",
+            }
+            sid = self._sid()
+            if sid:
+                args["session_id"] = sid
+            self._client.call("smart_ingest", args)
         except Exception as e:
             logger.debug("ferrosa on_memory_write mirror failed: %s", e)
 
