@@ -35,30 +35,6 @@ except Exception:  # pragma: no cover - depends on host Hermes version
     SkillMetadata = SkillPayload = None  # type: ignore[assignment]
     _HAS_SKILL_PROVIDERS = False
 
-import uuid
-
-# Pure session-mapping helpers. Prefer the package-relative import; fall back to
-# loading the sibling module by path for hosts that load this file as a
-# standalone module rather than a package.
-try:
-    from .session import (
-        DEFAULT_SESSION_NS,
-        ferrosa_session_id,
-        resolve_session_namespace,
-    )
-except ImportError:  # pragma: no cover - non-package load path
-    import importlib.util as _ilu
-    from pathlib import Path as _Path
-
-    _sp = _ilu.spec_from_file_location(
-        "ferrosa_session", _Path(__file__).with_name("session.py")
-    )
-    _sm = _ilu.module_from_spec(_sp)
-    _sp.loader.exec_module(_sm)
-    DEFAULT_SESSION_NS = _sm.DEFAULT_SESSION_NS
-    ferrosa_session_id = _sm.ferrosa_session_id
-    resolve_session_namespace = _sm.resolve_session_namespace
-
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -332,8 +308,6 @@ class FerrosaMemoryProvider(MemoryProvider):
         self._url: Optional[str] = None
         self._client: Optional[_McpClient] = None
         self._session_id: str = ""
-        self._ferrosa_session_id: str = ""
-        self._session_ns: uuid.UUID = DEFAULT_SESSION_NS
         self._tenant_id: str = ""
         self._hermes_home: str = ""
         self._saved_config: Dict[str, Any] = {}
@@ -373,10 +347,6 @@ class FerrosaMemoryProvider(MemoryProvider):
 
     def initialize(self, session_id: str, **kwargs) -> None:
         self._session_id = session_id
-        self._session_ns = resolve_session_namespace()
-        self._ferrosa_session_id = (
-            ferrosa_session_id(session_id, self._session_ns) or ""
-        )
         self._hermes_home = str(kwargs.get("hermes_home", "~/.hermes"))
         self._saved_config = _load_saved_config(self._hermes_home)
         self._url = _resolve_url(self._saved_config)
@@ -394,9 +364,10 @@ class FerrosaMemoryProvider(MemoryProvider):
             self._url.rsplit("@", 1)[-1] if "@" in self._url else self._url,
         )
 
-    def _sid(self, per_call: str = "") -> Optional[str]:
-        """Map a (per-call or initialized) session id to a ferrosa-memory UUID."""
-        return ferrosa_session_id(per_call or self._session_id, self._session_ns)
+    def _session_for_call(self, per_call: str = "") -> Optional[str]:
+        """Harness session id to send to ferrosa-memory (server derives UUID if needed)."""
+        s = (per_call or self._session_id).strip()
+        return s or None
 
     def system_prompt_block(self) -> str:
         if not self._client:
@@ -419,7 +390,7 @@ class FerrosaMemoryProvider(MemoryProvider):
             # session AND tenant-global consolidated/curated memory so recall
             # stays cross-session even though writes are session-scoped.
             args: Dict[str, Any] = {"query": query, "limit": 5, "scope": "both"}
-            sid = self._sid(session_id)
+            sid = self._session_for_call(session_id)
             if sid:
                 args["session_id"] = sid
             result = self._client.call("hybrid_search", args)
@@ -443,7 +414,7 @@ class FerrosaMemoryProvider(MemoryProvider):
         if not self._client:
             return
         label = session_id or self._session_id
-        sid = self._sid(session_id)
+        sid = self._session_for_call(session_id)
         try:
             args: Dict[str, Any] = {
                 "content": f"User turn in session {label}: {user_content[:800]}",
@@ -484,7 +455,7 @@ class FerrosaMemoryProvider(MemoryProvider):
         if not self._client:
             return
         try:
-            sid = self._sid()
+            sid = self._session_for_call()
             args: Dict[str, Any] = {"session_id": sid} if sid else {}
             self._client.call("run_consolidation", args)
             logger.info("ferrosa-memory: ran session-end consolidation")
@@ -505,7 +476,7 @@ class FerrosaMemoryProvider(MemoryProvider):
                 "content": content,
                 "entity_type": target if target in ("memory", "user") else "memory",
             }
-            sid = self._sid()
+            sid = self._session_for_call()
             if sid:
                 args["session_id"] = sid
             self._client.call("smart_ingest", args)
