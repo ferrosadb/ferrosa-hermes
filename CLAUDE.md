@@ -71,6 +71,16 @@ The plugin talks to ferrosa-memory over **raw JSON-RPC via `urllib`** — there 
 
 `_resolve_url`: `FERROSA_MEMORY_URL` env → saved `$HERMES_HOME/plugins/ferrosa/config.json` → fallback `http://ferrosa_user:ferrosa_user@127.0.0.1:18765/mcp`. (The README also lists `mcp_servers.ferrosa-memory.url` from Hermes config.yaml as a layer; the plugin code itself reads the first three.)
 
+### Session id mapping
+
+Hermes session ids are not UUIDs, but ferrosa-memory requires UUID `session_id`s.
+`plugin/session.py` maps the native id to a deterministic UUIDv5
+(`resolve_session_namespace` + `ferrosa_session_id`); valid UUIDs pass through,
+empty ids are omitted (server default applies). The mapped id is used in
+`prefetch` (with `scope="both"`), `sync_turn`, `on_memory_write`, and
+`on_session_end`. Override the namespace with `FERROSA_MEMORY_SESSION_NS`.
+Keep the mapping pure/stdlib-only so it stays unit-testable without a Hermes install.
+
 ## How the installer works (`hooks/install-agent-hooks.py`)
 
 Design stance: **conservative and idempotent**. It always writes wrappers + an `env` file + JSON/YAML snippets under `~/.config/ferrosa-memory/hooks/`, backs up any file it edits, and re-running it does not duplicate hooks (`ensure_hook` / `ensure_hook_with_entry` match on `command`).

@@ -25,6 +25,13 @@ The plugin:
 It does NOT re-expose fmem tools — those are already available directly as MCP tools
 under the `fmem_` prefixes (e.g. `fmem_smart_ingest`, `fmem_hybrid_search`).
 
+### Session ids
+
+Hermes' native session id is mapped to a deterministic UUID (UUIDv5) before being
+sent to ferrosa-memory, which requires UUID `session_id`s. The mapping is stateless,
+so it is stable across restarts and replicas. Recall (`prefetch`) uses `scope="both"`,
+spanning the current session and tenant-global consolidated memory.
+
 ## Configuration
 
 ```bash
@@ -40,6 +47,7 @@ Or via the `hermes memory setup` wizard.
 |----------|-------------|---------|
 | `FERROSA_MEMORY_URL` | Full MCP HTTP endpoint with credentials | `http://ferrosa_user:ferrosa_user@127.0.0.1:18765/mcp` |
 | `FERROSA_MEMORY_TENANT_ID` | Tenant override for multi-tenant deployments | (auto-detected) |
+| `FERROSA_MEMORY_SESSION_NS` | UUIDv5 namespace for deriving ferrosa-memory session UUIDs from Hermes session ids. May be a UUID or any string. | (built-in default) |
 
 ## Files
 
