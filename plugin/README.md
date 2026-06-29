@@ -25,6 +25,17 @@ The plugin:
 It does NOT re-expose fmem tools — those are already available directly as MCP tools
 under the `fmem_` prefixes (e.g. `fmem_smart_ingest`, `fmem_hybrid_search`).
 
+### Session ids
+
+Hermes' native session id is passed through on every ferrosa-memory call
+(`prefetch`, `sync_turn`, `on_memory_write`, `on_session_end`). ferrosa-memory
+maps non-UUID ids to a stable derived UUID server-side (see
+[ferrosa-memory#138](https://github.com/ferrosadb/ferrosa-memory/pull/138));
+requires a ferrosa-memory build that includes that change (merged to `main`
+2026-06-29).
+Recall (`prefetch`) uses `scope="both"`, spanning the current session and
+tenant-global consolidated memory.
+
 ## Configuration
 
 ```bash
